@@ -75,3 +75,4 @@ The user selects a plan from a dropdown in the frontend, and then provides a bil
 - Ability to handle an unlimited number of search results instead of a hard cap of 1000.
 - Infinite scroll UX instead of pagination.
 - Proper handling of location URLs instead of inline `provider_groups`.
+- Geographic data from another source could be matched against the business names, allowing users to filter businesses to within a radius of an address or zip code.
