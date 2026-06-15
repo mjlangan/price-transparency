@@ -71,6 +71,62 @@ func TestFetchIndex_Empty(t *testing.T) {
 	}
 }
 
+func TestPlanFileMappings_GroupsByURL(t *testing.T) {
+	fixture := IndexFile{
+		ReportingStructure: []ReportingStructure{
+			{
+				ReportingPlans: []ReportingPlan{{PlanName: "Plan A", PlanID: "A"}},
+				InNetworkFiles: []FileRef{{Location: "https://example.com/rates.json"}},
+			},
+			{
+				ReportingPlans: []ReportingPlan{{PlanName: "Plan B", PlanID: "B"}},
+				InNetworkFiles: []FileRef{{Location: "https://example.com/rates2.json"}},
+			},
+		},
+	}
+	mappings := PlanFileMappings(&fixture)
+	if len(mappings) != 2 {
+		t.Fatalf("len(mappings) = %d, want 2", len(mappings))
+	}
+	if mappings[0].FileURL != "https://example.com/rates.json" {
+		t.Errorf("mappings[0].FileURL = %q", mappings[0].FileURL)
+	}
+	if len(mappings[0].Plans) != 1 || mappings[0].Plans[0].PlanID != "A" {
+		t.Errorf("mappings[0].Plans = %+v, want [{PlanID:A}]", mappings[0].Plans)
+	}
+}
+
+func TestPlanFileMappings_MergesDuplicateURLs(t *testing.T) {
+	sharedURL := "https://example.com/rates.json"
+	fixture := IndexFile{
+		ReportingStructure: []ReportingStructure{
+			{
+				ReportingPlans: []ReportingPlan{{PlanName: "Plan A", PlanID: "A"}},
+				InNetworkFiles: []FileRef{{Location: sharedURL}},
+			},
+			{
+				ReportingPlans: []ReportingPlan{{PlanName: "Plan B", PlanID: "B"}},
+				InNetworkFiles: []FileRef{{Location: sharedURL}},
+			},
+		},
+	}
+	mappings := PlanFileMappings(&fixture)
+	if len(mappings) != 1 {
+		t.Fatalf("len(mappings) = %d, want 1 (same URL deduped)", len(mappings))
+	}
+	if len(mappings[0].Plans) != 2 {
+		t.Errorf("len(mappings[0].Plans) = %d, want 2", len(mappings[0].Plans))
+	}
+}
+
+func TestPlanFileMappings_Empty(t *testing.T) {
+	fixture := IndexFile{ReportingStructure: []ReportingStructure{}}
+	mappings := PlanFileMappings(&fixture)
+	if len(mappings) != 0 {
+		t.Errorf("expected empty mappings for empty index, got %d", len(mappings))
+	}
+}
+
 func TestPlanNames_Deduplicates(t *testing.T) {
 	idx := &IndexFile{
 		ReportingStructure: []ReportingStructure{

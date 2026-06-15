@@ -1,33 +1,61 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
+import { PlanInfo } from '../api'
 
 export interface SearchParams {
   code: string
   npi: string
   ein: string
+  planId: string
 }
 
 interface Props {
   onSearch: (params: SearchParams) => void
   isLoading: boolean
   disabled: boolean
+  plans: PlanInfo[]
 }
 
-export default function SearchForm({ onSearch, isLoading, disabled }: Props) {
+export default function SearchForm({ onSearch, isLoading, disabled, plans }: Props) {
   const [code, setCode] = useState('')
   const [npi, setNpi] = useState('')
   const [ein, setEin] = useState('')
+  const [planId, setPlanId] = useState('')
+
+  useEffect(() => {
+    if (plans.length > 0 && planId === '') {
+      setPlanId(plans[0].plan_id)
+    }
+  }, [plans])
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     const trimmedCode = code.trim()
-    if (!trimmedCode) return
-    onSearch({ code: trimmedCode, npi: npi.trim(), ein: ein.trim() })
+    if (!trimmedCode || !planId) return
+    onSearch({ code: trimmedCode, npi: npi.trim(), ein: ein.trim(), planId })
   }
 
-  const canSubmit = code.trim().length > 0 && !isLoading && !disabled
+  const canSubmit = code.trim().length > 0 && planId.length > 0 && !isLoading && !disabled
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label htmlFor="plan" className="block text-sm font-medium text-gray-700">
+          Insurance Plan
+        </label>
+        <select
+          id="plan"
+          value={planId}
+          onChange={e => setPlanId(e.target.value)}
+          disabled={plans.length === 0 || disabled}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+        >
+          {plans.map(p => (
+            <option key={p.plan_id} value={p.plan_id}>
+              {p.plan_name} ({p.plan_id})
+            </option>
+          ))}
+        </select>
+      </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
           <label htmlFor="code" className="block text-sm font-medium text-gray-700">

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { fetchStatus, searchRates, StatusResponse, SearchResponse } from './api'
+import { fetchStatus, fetchPlans, searchRates, StatusResponse, SearchResponse, PlanInfo } from './api'
 import StatusBanner from './components/StatusBanner'
 import SearchForm, { SearchParams } from './components/SearchForm'
 import ResultsTable from './components/ResultsTable'
@@ -8,6 +8,7 @@ const POLL_INTERVAL_MS = 2000
 
 export default function App() {
   const [status, setStatus] = useState<StatusResponse | null>(null)
+  const [plans, setPlans] = useState<PlanInfo[]>([])
   const [searchResult, setSearchResult] = useState<SearchResponse | null>(null)
   const [searchError, setSearchError] = useState<string>('')
   const [isSearching, setIsSearching] = useState(false)
@@ -20,6 +21,9 @@ export default function App() {
         setStatus(s)
         if (s.status === 'ready' || s.status === 'error') {
           clearInterval(pollRef.current!)
+          if (s.status === 'ready') {
+            fetchPlans().then(r => setPlans(r.plans)).catch(() => {})
+          }
         }
       } catch {
         // network not yet up — keep polling
@@ -29,12 +33,12 @@ export default function App() {
     return () => clearInterval(pollRef.current!)
   }, [])
 
-  async function handleSearch({ code, npi, ein }: SearchParams) {
+  async function handleSearch({ code, npi, ein, planId }: SearchParams) {
     setIsSearching(true)
     setSearchError('')
     setSearchResult(null)
     try {
-      const result = await searchRates(code, npi || undefined, ein || undefined)
+      const result = await searchRates(code, planId, npi || undefined, ein || undefined)
       setSearchResult(result)
     } catch (err) {
       setSearchError(err instanceof Error ? err.message : 'Search failed')
@@ -66,6 +70,7 @@ export default function App() {
               onSearch={handleSearch}
               isLoading={isSearching}
               disabled={!isReady}
+              plans={plans}
             />
           </div>
         )}

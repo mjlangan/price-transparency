@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -14,8 +15,6 @@ type StatusResponse struct {
 	Status             string `json:"status"`
 	Message            string `json:"message"`
 	Error              string `json:"error,omitempty"`
-	FileURL            string `json:"file_url,omitempty"`
-	LoadedAt           string `json:"loaded_at,omitempty"`
 	BillingCodesLoaded int    `json:"billing_codes_loaded,omitempty"`
 	RateRecordsLoaded  int    `json:"rate_records_loaded,omitempty"`
 }
@@ -23,7 +22,9 @@ type StatusResponse struct {
 // AppState is the shared ingestion state. Implemented by main.go to avoid a circular import.
 type AppState interface {
 	GetStatus() (status, message, errMsg string)
-	GetIndex() *search.SearchIndex
+	GetPlans() []search.PlanInfo
+	GetIndexForPlan(planID string) *search.SearchIndex
+	AggregateStats() (totalCodes, totalRecords int)
 }
 
 func StatusHandler(state AppState) http.HandlerFunc {
@@ -36,27 +37,33 @@ func StatusHandler(state AppState) http.HandlerFunc {
 		if errMsg != "" {
 			resp.Error = errMsg
 		}
-
-		if idx := state.GetIndex(); idx != nil {
-			resp.FileURL = idx.FileURL
-			resp.LoadedAt = idx.LoadedAt.UTC().Format("2006-01-02T15:04:05Z")
-			resp.BillingCodesLoaded = idx.TotalCodes
-			resp.RateRecordsLoaded = idx.TotalRecords
+		if status == "ready" {
+			codes, records := state.AggregateStats()
+			resp.BillingCodesLoaded = codes
+			resp.RateRecordsLoaded = records
 		}
-
 		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+func PlansHandler(state AppState) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		status, _, _ := state.GetStatus()
+		if status != "ready" {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "data is still loading"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"plans": state.GetPlans()})
 	}
 }
 
 func SearchHandler(state AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		idx := state.GetIndex()
-		if idx == nil {
-			status, _, _ := state.GetStatus()
+		status, _, _ := state.GetStatus()
+		if status != "ready" {
 			writeJSON(w, http.StatusServiceUnavailable, search.SearchResponse{
 				Error: "data is still loading",
 			})
-			_ = status
 			return
 		}
 
@@ -64,6 +71,22 @@ func SearchHandler(state AppState) http.HandlerFunc {
 		if code == "" {
 			writeJSON(w, http.StatusBadRequest, search.SearchResponse{
 				Error: "query parameter 'code' is required",
+			})
+			return
+		}
+
+		planID := r.URL.Query().Get("plan_id")
+		if planID == "" {
+			writeJSON(w, http.StatusBadRequest, search.SearchResponse{
+				Error: "query parameter 'plan_id' is required",
+			})
+			return
+		}
+
+		idx := state.GetIndexForPlan(planID)
+		if idx == nil {
+			writeJSON(w, http.StatusBadRequest, search.SearchResponse{
+				Error: fmt.Sprintf("unknown plan_id: %q", planID),
 			})
 			return
 		}

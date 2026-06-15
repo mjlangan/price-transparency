@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"sync"
 
 	"price-transparency/backend/api"
@@ -15,11 +16,12 @@ import (
 const defaultIndexURL = "https://www.centene.com/content/dam/centene/Centene%20Corporate/json/DOCUMENT/2026-04-28_fidelis_index.json"
 
 type appState struct {
-	mu      sync.RWMutex
-	status  string
-	message string
-	errMsg  string
-	index   *search.SearchIndex
+	mu          sync.RWMutex
+	status      string
+	message     string
+	errMsg      string
+	plans       []search.PlanInfo              // sorted alphabetically by plan name
+	planIndexes map[string]*search.SearchIndex // plan_id → index (multiple plans share one index)
 }
 
 func (s *appState) setStatus(status, message string) {
@@ -39,12 +41,14 @@ func (s *appState) setError(err error) {
 	log.Printf("[error] %v", err)
 }
 
-func (s *appState) setReady(idx *search.SearchIndex) {
+func (s *appState) setReady(plans []search.PlanInfo, planIndexes map[string]*search.SearchIndex) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.index = idx
+	s.plans = plans
+	s.planIndexes = planIndexes
 	s.status = "ready"
-	s.message = fmt.Sprintf("Loaded %d billing codes, %d rate records", idx.TotalCodes, idx.TotalRecords)
+	codes, records := aggregateStats(planIndexes)
+	s.message = fmt.Sprintf("Loaded %d plans, %d billing codes, %d rate records", len(plans), codes, records)
 	log.Printf("[ready] %s", s.message)
 }
 
@@ -55,33 +59,96 @@ func (s *appState) GetStatus() (status, message, errMsg string) {
 	return s.status, s.message, s.errMsg
 }
 
-// GetIndex implements api.AppState.
-func (s *appState) GetIndex() *search.SearchIndex {
+// GetPlans implements api.AppState.
+func (s *appState) GetPlans() []search.PlanInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.index
+	return s.plans
+}
+
+// GetIndexForPlan implements api.AppState.
+func (s *appState) GetIndexForPlan(planID string) *search.SearchIndex {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.planIndexes == nil {
+		return nil
+	}
+	return s.planIndexes[planID]
+}
+
+// AggregateStats implements api.AppState.
+func (s *appState) AggregateStats() (totalCodes, totalRecords int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return aggregateStats(s.planIndexes)
+}
+
+func aggregateStats(planIndexes map[string]*search.SearchIndex) (totalCodes, totalRecords int) {
+	seen := make(map[*search.SearchIndex]bool)
+	for _, idx := range planIndexes {
+		if !seen[idx] {
+			seen[idx] = true
+			totalCodes += idx.TotalCodes
+			totalRecords += idx.TotalRecords
+		}
+	}
+	return
 }
 
 func runIngestion(state *appState, indexURL string) {
 	state.setStatus("fetching_index", "Fetching index file...")
-	idx, rateURL, err := ingest.FetchIndex(indexURL)
+	idx, _, err := ingest.FetchIndex(indexURL)
 	if err != nil {
 		state.setError(fmt.Errorf("index: %w", err))
 		return
 	}
 
-	planNames := ingest.PlanNames(idx)
-	state.setStatus("fetching_rates", fmt.Sprintf("Fetching rate file from %s...", rateURL))
-
-	rf, err := ingest.FetchRates(rateURL)
-	if err != nil {
-		state.setError(fmt.Errorf("rates: %w", err))
+	mappings := ingest.PlanFileMappings(idx)
+	if len(mappings) == 0 {
+		state.setError(fmt.Errorf("no in-network files found in index"))
 		return
 	}
 
-	state.setStatus("building_index", "Building search index...")
-	searchIdx := search.Build(rf, planNames, rateURL)
-	state.setReady(searchIdx)
+	planIndexes := make(map[string]*search.SearchIndex)
+	var allPlans []search.PlanInfo
+
+	for i, m := range mappings {
+		state.setStatus("fetching_rates", fmt.Sprintf("Fetching rate file %d of %d...", i+1, len(mappings)))
+
+		rf, err := ingest.FetchRates(m.FileURL)
+		if err != nil {
+			state.setError(fmt.Errorf("rates (%s): %w", m.FileURL, err))
+			return
+		}
+
+		planNames := make([]string, len(m.Plans))
+		for j, p := range m.Plans {
+			planNames[j] = p.PlanName
+		}
+
+		state.setStatus("building_index", fmt.Sprintf("Building index %d of %d...", i+1, len(mappings)))
+		searchIdx := search.Build(rf, planNames, m.FileURL)
+
+		for _, p := range m.Plans {
+			allPlans = append(allPlans, search.PlanInfo{
+				PlanID:         p.PlanID,
+				PlanIDType:     p.PlanIDType,
+				PlanName:       p.PlanName,
+				PlanMarketType: p.PlanMarketType,
+				IssuerName:     p.IssuerName,
+			})
+			planIndexes[p.PlanID] = searchIdx
+		}
+	}
+
+	sort.Slice(allPlans, func(i, j int) bool {
+		if allPlans[i].PlanName != allPlans[j].PlanName {
+			return allPlans[i].PlanName < allPlans[j].PlanName
+		}
+		return allPlans[i].PlanID < allPlans[j].PlanID
+	})
+
+	state.setReady(allPlans, planIndexes)
 }
 
 func main() {
@@ -101,6 +168,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/status", api.StatusHandler(state))
+	mux.HandleFunc("/api/plans", api.PlansHandler(state))
 	mux.HandleFunc("/api/search", api.SearchHandler(state))
 
 	addr := ":" + port

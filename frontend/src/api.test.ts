@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fetchStatus, searchRates } from './api'
+import { fetchStatus, fetchPlans, searchRates } from './api'
 
 function mockFetch(body: unknown, status = 200) {
   return vi.fn().mockResolvedValue({
@@ -35,31 +35,52 @@ describe('fetchStatus', () => {
   })
 })
 
+describe('fetchPlans', () => {
+  it('returns parsed PlansResponse', async () => {
+    const payload = {
+      plans: [
+        { plan_id: 'PLAN-001', plan_name: 'Alpha Plan', plan_id_type: 'hios', plan_market_type: 'individual', issuer_name: 'Alpha' },
+      ],
+    }
+    vi.stubGlobal('fetch', mockFetch(payload))
+
+    const result = await fetchPlans()
+    expect(result.plans).toHaveLength(1)
+    expect(result.plans[0].plan_id).toBe('PLAN-001')
+  })
+
+  it('throws on non-ok response', async () => {
+    vi.stubGlobal('fetch', mockFetch({}, 503))
+    await expect(fetchPlans()).rejects.toThrow('Plans fetch failed: 503')
+  })
+})
+
 describe('searchRates', () => {
-  it('builds query string with required code', async () => {
+  it('builds query string with required code and plan_id', async () => {
     vi.stubGlobal('fetch', mockFetch({ billing_code: '99213', results: [], result_count: 0 }))
-    await searchRates('99213')
+    await searchRates('99213', 'PLAN-001')
     const url = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
     expect(url).toContain('code=99213')
+    expect(url).toContain('plan_id=PLAN-001')
   })
 
   it('includes npi when provided', async () => {
     vi.stubGlobal('fetch', mockFetch({ billing_code: '99213', results: [], result_count: 0 }))
-    await searchRates('99213', '1902960099')
+    await searchRates('99213', 'PLAN-001', '1902960099')
     const url = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
     expect(url).toContain('npi=1902960099')
   })
 
   it('includes ein when provided', async () => {
     vi.stubGlobal('fetch', mockFetch({ billing_code: '99213', results: [], result_count: 0 }))
-    await searchRates('99213', undefined, '11-2700051')
+    await searchRates('99213', 'PLAN-001', undefined, '11-2700051')
     const url = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
     expect(url).toContain('ein=11-2700051')
   })
 
   it('omits npi and ein when not provided', async () => {
     vi.stubGlobal('fetch', mockFetch({ billing_code: '99213', results: [], result_count: 0 }))
-    await searchRates('99213')
+    await searchRates('99213', 'PLAN-001')
     const url = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
     expect(url).not.toContain('npi=')
     expect(url).not.toContain('ein=')
@@ -74,6 +95,6 @@ describe('searchRates', () => {
         json: () => Promise.resolve({ error: 'data is still loading' }),
       }),
     )
-    await expect(searchRates('99213')).rejects.toThrow('data is still loading')
+    await expect(searchRates('99213', 'PLAN-001')).rejects.toThrow('data is still loading')
   })
 })

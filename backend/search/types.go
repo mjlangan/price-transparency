@@ -32,6 +32,15 @@ type SearchIndex struct {
 	TotalRecords int
 }
 
+// PlanInfo is a single insurance plan from the CMS index file.
+type PlanInfo struct {
+	PlanID         string `json:"plan_id"`
+	PlanIDType     string `json:"plan_id_type"`
+	PlanName       string `json:"plan_name"`
+	PlanMarketType string `json:"plan_market_type"`
+	IssuerName     string `json:"issuer_name"`
+}
+
 // SearchResponse is the JSON shape returned by /api/search.
 type SearchResponse struct {
 	BillingCode     string         `json:"billing_code"`
