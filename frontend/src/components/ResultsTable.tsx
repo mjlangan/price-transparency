@@ -108,7 +108,7 @@ function Row({ record }: { record: SearchRecord }) {
 
   return (
     <tr className="hover:bg-gray-50">
-      <Td>{record.business_name || <span className="text-gray-400">—</span>}</Td>
+      <Td wrap className="break-words">{record.business_name || <span className="text-gray-400">—</span>}</Td>
       <Td wrap>
         {record.npis && record.npis.length > 0
           ? record.npis.join(', ')
