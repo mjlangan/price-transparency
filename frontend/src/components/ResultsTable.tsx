@@ -3,20 +3,45 @@ import { SearchResponse, SearchRecord } from '../api'
 
 const PAGE_SIZE = 50
 
+type SortField = 'business_name' | 'negotiated_rate'
+type SortDir = 'asc' | 'desc'
+
 interface Props {
   response: SearchResponse
 }
 
 export default function ResultsTable({ response }: Props) {
   const [page, setPage] = useState(0)
+  const [sort, setSort] = useState<{ field: SortField; dir: SortDir }>({
+    field: 'business_name',
+    dir: 'asc',
+  })
 
   useEffect(() => {
     setPage(0)
   }, [response])
 
   const { results, billing_code, billing_code_type, description, result_count } = response
-  const totalPages = Math.ceil(results.length / PAGE_SIZE)
-  const pageResults = results.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
+  const sorted = [...results].sort((a, b) => {
+    const mul = sort.dir === 'asc' ? 1 : -1
+    if (sort.field === 'business_name') {
+      return mul * (a.business_name ?? '').localeCompare(b.business_name ?? '')
+    }
+    return mul * (a.negotiated_rate - b.negotiated_rate)
+  })
+
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE)
+  const pageResults = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
+  function handleSort(field: SortField) {
+    setPage(0)
+    setSort(prev =>
+      prev.field === field
+        ? { field, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { field, dir: 'asc' },
+    )
+  }
 
   return (
     <div className="space-y-3">
@@ -45,10 +70,14 @@ export default function ResultsTable({ response }: Props) {
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50">
                 <tr>
-                  <Th>Business Name</Th>
+                  <SortableTh field="business_name" sort={sort} onSort={handleSort}>
+                    Business Name
+                  </SortableTh>
                   <Th>NPI(s)</Th>
                   <Th>EIN</Th>
-                  <Th>Rate</Th>
+                  <SortableTh field="negotiated_rate" sort={sort} onSort={handleSort}>
+                    Rate
+                  </SortableTh>
                   <Th>Type</Th>
                   <Th>Class</Th>
                   <Th>Setting</Th>
@@ -98,6 +127,33 @@ function Th({ children }: { children: React.ReactNode }) {
   return (
     <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
       {children}
+    </th>
+  )
+}
+
+function SortableTh({
+  children,
+  field,
+  sort,
+  onSort,
+}: {
+  children: React.ReactNode
+  field: SortField
+  sort: { field: SortField; dir: SortDir }
+  onSort: (field: SortField) => void
+}) {
+  const active = sort.field === field
+  return (
+    <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+      <button
+        onClick={() => onSort(field)}
+        className="inline-flex items-center gap-1 hover:text-gray-800"
+      >
+        {children}
+        <span className="text-gray-400">
+          {active ? (sort.dir === 'asc' ? '↑' : '↓') : '↕'}
+        </span>
+      </button>
     </th>
   )
 }
