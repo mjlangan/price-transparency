@@ -109,7 +109,7 @@ function Row({ record }: { record: SearchRecord }) {
   return (
     <tr className="hover:bg-gray-50">
       <Td>{record.business_name || <span className="text-gray-400">—</span>}</Td>
-      <Td>
+      <Td wrap>
         {record.npis && record.npis.length > 0
           ? record.npis.join(', ')
           : <span className="text-gray-400">—</span>}
@@ -126,9 +126,9 @@ function Row({ record }: { record: SearchRecord }) {
   )
 }
 
-function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+function Td({ children, className = '', wrap = false }: { children: React.ReactNode; className?: string; wrap?: boolean }) {
   return (
-    <td className={`whitespace-nowrap px-4 py-3 text-gray-700 ${className}`}>{children}</td>
+    <td className={`${wrap ? 'whitespace-normal' : 'whitespace-nowrap'} px-4 py-3 text-gray-700 ${className}`}>{children}</td>
   )
 }
 
