@@ -53,7 +53,7 @@ export async function searchRates(
   code: string,
   npi?: string,
   ein?: string,
-  limit = 100,
+  limit = 1000,
 ): Promise<SearchResponse> {
   const params = new URLSearchParams({ code, limit: String(limit) })
   if (npi) params.set('npi', npi)
