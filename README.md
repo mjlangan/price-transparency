@@ -74,3 +74,4 @@ The user selects a plan from a dropdown in the frontend, and then provides a bil
 - The plan picker can be a little confusing with multiple plans of the same name but with different IDs. Users would probably appreciate a better experience for selecting the correct plan.
 - Ability to handle an unlimited number of search results instead of a hard cap of 1000.
 - Infinite scroll UX instead of pagination.
+- Proper handling of location URLs instead of inline `provider_groups`.
