@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { SearchResponse, SearchRecord } from '../api'
 
 const PAGE_SIZE = 50
@@ -9,6 +9,10 @@ interface Props {
 
 export default function ResultsTable({ response }: Props) {
   const [page, setPage] = useState(0)
+
+  useEffect(() => {
+    setPage(0)
+  }, [response])
 
   const { results, billing_code, billing_code_type, description, result_count } = response
   const totalPages = Math.ceil(results.length / PAGE_SIZE)

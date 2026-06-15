@@ -1,6 +1,8 @@
 package search
 
 import (
+	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +19,10 @@ func Build(rf *ingest.RateFile, planNames []string, fileURL string) *SearchIndex
 	}
 
 	byCode := make(map[string][]SearchRecord)
+	// seen deduplicates records with identical (code, provider_group, rate details).
+	// The same billing code can appear multiple times in in_network under different
+	// negotiation_arrangement values, producing duplicate records for the same provider+price.
+	seen := make(map[string]bool)
 	totalRecords := 0
 
 	for _, item := range rf.InNetwork {
@@ -33,6 +39,18 @@ func Build(rf *ingest.RateFile, planNames []string, fileURL string) *SearchIndex
 					bizName := pg.TIN.BusinessName
 
 					for _, price := range rate.NegotiatedPrices {
+						key := fmt.Sprintf("%s|%d|%.2f|%s|%s|%s|%s|%s|%s",
+							item.BillingCode, provGroupID,
+							price.NegotiatedRate, price.NegotiatedType,
+							price.BillingClass, price.Setting, price.ExpirationDate,
+							strings.Join(price.ServiceCode, ","),
+							strings.Join(price.BillingCodeModifier, ","),
+						)
+						if seen[key] {
+							continue
+						}
+						seen[key] = true
+
 						rec := SearchRecord{
 							BillingCode:     item.BillingCode,
 							BillingCodeType: item.BillingCodeType,
@@ -109,12 +127,7 @@ func (idx *SearchIndex) Search(code, npiStr, einStr string, limit int) ([]Search
 }
 
 func containsNPI(npis []int64, target int64) bool {
-	for _, n := range npis {
-		if n == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(npis, target)
 }
 
 // normalizeEIN strips hyphens and lowercases for comparison.
